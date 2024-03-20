@@ -1,0 +1,76 @@
+_schema-version: "3.1"
+ID: hana_app
+description: A simple CAP project.
+version: 1.0.0
+modules:
+- name: hana_app-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: hana_app-auth
+  - name: hana_app-db
+  - name: hana_app-logging
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+  build-parameters:
+    builder: npm
+- name: hana_app-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: hana_app-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: hana_app
+  type: approuter.nodejs
+  path: app/router
+  requires:
+  - name: srv-api
+    group: destinations
+    properties:
+      forwardAuthToken: true
+      name: srv-api
+      url: ~{srv-url}
+  - name: hana_app-auth
+  - name: hana_app-logging
+  parameters:
+    disk-quota: 256M
+    keep-existing-routes: true
+    memory: 256M
+resources:
+- name: hana_app-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      tenant-mode: dedicated
+      xsappname: hana_app-${org}-${space}
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: hana_app-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: hana_app-logging
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: application-logs
+    service-plan: standard
+- name: hana_app_html_repo_host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-plan: app-host
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production
